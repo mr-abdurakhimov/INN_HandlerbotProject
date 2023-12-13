@@ -61,6 +61,7 @@ namespace INN_HandlerbotProject
             }
             else if (message.Text.ToLower().StartsWith("/full"))
             {
+                lastCommand = message.Text;
                 var innCommand = message.Text.Replace("/full", "").Trim();
                 var data = InitilizeData(innCommand);
 
@@ -81,6 +82,7 @@ namespace INN_HandlerbotProject
             }
             else if (message.Text.ToLower().StartsWith("/help"))
             {
+                lastCommand = message.Text;
                 var helpMessage = "Справка по доступным командам:\n\n" +
                                   "/start – начать общение с ботом.\n" +
                                   "/help – вывести справку о доступных командах.\n" +
@@ -96,6 +98,7 @@ namespace INN_HandlerbotProject
             }
             else if (message.Text.StartsWith("/hello"))
             {
+                lastCommand = message.Text;
                 var helloMessage = "Привет! Меня зовут Амир Абдурахимов. Вот мои контактные данные:\n" +
                                    "✉️ Email: tiam11@bk.ru\n" +
                                    "🔗 GitHub: [https://github.com/mr-abdurakhimov](https://github.com/mr-abdurakhimov)";
@@ -114,7 +117,7 @@ namespace INN_HandlerbotProject
             }
             else if (message.Text.ToLower().StartsWith("/start"))
             {
-                lastCommand = "/start";
+                lastCommand = message.Text;
                 await botClient.SendTextMessageAsync(
                     chatId: message.Chat.Id,
                     text: $"Добрый день, {message.From.FirstName} ! Я бот, который по ИНН компании выдает информацию по этой компании !"

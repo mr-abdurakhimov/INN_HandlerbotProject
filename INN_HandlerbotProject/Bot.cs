@@ -19,7 +19,9 @@ namespace INN_HandlerbotProject
             botClient.OnMessage += BotOnMessageReceived;
 
             botClient.StartReceiving();
-
+            Console.WriteLine("Press any key to stop receiving messages...");
+            Console.ReadKey();
+            botClient.StopReceiving();
         }
 
         private async void BotOnMessageReceived(object sender, MessageEventArgs messageEventArgs)

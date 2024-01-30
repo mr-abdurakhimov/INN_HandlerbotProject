@@ -1,17 +1,20 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Configuration;
 using Dadata;
 using Dadata.Model;
 using Telegram.Bot;
 using Telegram.Bot.Args;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
 namespace INN_HandlerbotProject
 {
     class Bot
     {
+        private Dictionary<long, Stack<string>> lastMessages = new Dictionary<long, Stack<string>>();
         private TelegramBotClient botClient;
-        public string lastCommand = string.Empty;
+        private bool fromLast;
         public void Run()
         {           
 
@@ -36,20 +39,16 @@ namespace INN_HandlerbotProject
             {
                 var innCommand = message.Text.Replace("/inn", "").Trim();
                 var inns = innCommand.Split(' ');
-                lastCommand = message.Text;
                 foreach (var inn in inns)
                 {
+                    
                     var data = InitilizeData(inn);
 
                     if (data.suggestions.Count == 0)
-                    {
-                        await botClient.SendTextMessageAsync(
-                          chatId: message.Chat.Id,
-                          text: $"Не было найдено компании по ИНН {inn}"
-                        );
-                        return;
-                    }
-
+                        {
+                            SendWrongInnMessage(messageEventArgs, inn);
+                            continue;
+                        }
                     foreach (var item in data.suggestions)
                     {
                         await botClient.SendTextMessageAsync(
@@ -59,32 +58,37 @@ namespace INN_HandlerbotProject
                                 $"📍 Адрес компании: {item.data.address.value}"
                         );
                     }
+                        
                 }
             }
             else if (message.Text.ToLower().StartsWith("/full"))
             {
-                lastCommand = message.Text;
                 var innCommand = message.Text.Replace("/full", "").Trim();
                 var data = InitilizeData(innCommand);
-
-                foreach (var item in data.suggestions)
+                if (data.suggestions.Count > 0)
                 {
-                    await botClient.SendTextMessageAsync(
-                      chatId: message.Chat.Id,
-                      text: $"🔍 Полная информация по ИНН {innCommand}:\n" +
-                            $"🏢 Наименование компании: {item.value}\n" +
-                            $"🆔 ОГРН: {item.data.ogrn}\n" +
-                            $"📅 Дата выдачи ОГРН: {item.data.ogrn_date}\n" +
-                            $"📍 Адрес: {item.data.address.unrestricted_value}\n" +
-                            $"👤 Руководитель: {item.data.management.name}\n" +
-                            $"📊 Статус: {ComputedPartyState(item.data.state.status)}\n" +
-                            $"🏢 Количество филиалов: {item.data.branch_count}"
-                    );
+                    foreach (var item in data.suggestions)
+                    {
+                        await botClient.SendTextMessageAsync(
+                          chatId: message.Chat.Id,
+                          text: $"🔍 Полная информация по ИНН {innCommand}:\n" +
+                                $"🏢 Наименование компании: {item.value}\n" +
+                                $"🆔 ОГРН: {item.data.ogrn}\n" +
+                                $"📅 Дата выдачи ОГРН: {item.data.ogrn_date}\n" +
+                                $"📍 Адрес: {item.data.address.unrestricted_value}\n" +
+                                $"👤 Руководитель: {item.data.management.name}\n" +
+                                $"📊 Статус: {ComputedPartyState(item.data.state.status)}\n" +
+                                $"🏢 Количество филиалов: {item.data.branch_count}"
+                        );
+                    }
+                }
+                else
+                {
+                    SendWrongInnMessage(messageEventArgs, innCommand);
                 }
             }
             else if (message.Text.ToLower().StartsWith("/help"))
             {
-                lastCommand = message.Text;
                 var helpMessage = "Справка по доступным командам:\n\n" +
                                   "/start – начать общение с ботом.\n" +
                                   "/help – вывести справку о доступных командах.\n" +
@@ -100,7 +104,6 @@ namespace INN_HandlerbotProject
             }
             else if (message.Text.StartsWith("/hello"))
             {
-                lastCommand = message.Text;
                 var helloMessage = "Привет! Меня зовут Амир Абдурахимов. Вот мои контактные данные:\n" +
                                    "✉️ Email: tiam11@bk.ru\n" +
                                    "🔗 GitHub: [https://github.com/mr-abdurakhimov](https://github.com/mr-abdurakhimov)";
@@ -113,17 +116,23 @@ namespace INN_HandlerbotProject
             }
             else if (message.Text.ToLower().StartsWith("/last"))
             {
-                messageEventArgs.Message.Text = lastCommand;
-                BotOnMessageReceived(sender, messageEventArgs);
-
+                if (CheckLastCommand(message.From.Id))
+                {
+                    messageEventArgs.Message.Text = lastMessages[message.From.Id].Pop();
+                    fromLast = true;
+                    BotOnMessageReceived(sender, messageEventArgs);
+                    return;
+                }
+                else
+                    await botClient.SendTextMessageAsync(chatId: message.Chat.Id, text: $"Последние команды закончились! Используйте другие команды, чтобы /last стала доступна");
+  
             }
             else if (message.Text.ToLower().StartsWith("/start"))
             {
-                lastCommand = message.Text;
+                lastMessages[message.From.Id] = new Stack<string>();
                 await botClient.SendTextMessageAsync(
                     chatId: message.Chat.Id,
-                    text: $"Добрый день, {message.From.FirstName} ! Я бот, который по ИНН компании выдает информацию по этой компании !"
-                );
+                    text: $"Добрый день, {message.From.FirstName}! Я бот, который по ИНН компании выдает информацию по этой компании!");
             }
             else
             {
@@ -132,6 +141,35 @@ namespace INN_HandlerbotProject
                     text: $"Я не знаю такой команды( Подробнее о моих командах можно узнать, написав мне '/help'"
                 );
             }
+            if(message.Text.StartsWith('/') && !fromLast)
+            {
+                if(lastMessages.ContainsKey(message.From.Id))
+                {
+                    lastMessages[message.From.Id].Push(message.Text);
+                }
+                else {
+                    await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: $"Что-то пошло не так. Попробуйте перезапустить меня командой /start"
+                );
+                }
+            }
+            fromLast = false;
+                
+        }
+
+        private async void SendWrongInnMessage(MessageEventArgs message,string inn)
+        {
+            await botClient.SendTextMessageAsync(
+                              chatId: message.Message.Chat.Id,
+                              text: $"Неправильный инн: {inn}"
+                            );
+        }
+        private bool CheckLastCommand(long chat_id)
+        {
+            if (lastMessages.ContainsKey(chat_id))
+                return lastMessages[chat_id].Count > 0;
+            return false;
         }
 
         private SuggestResponse<Party> InitilizeData(string INN)
